@@ -93,6 +93,7 @@ type (
 	//Graphs represents the standard Graph interface
 	Graphs interface {
 		// sequence.SizableSequencable
+		UID() string
 		Contains(interface{}) bool
 		Get(interface{}) Nodes
 		Add(...interface{})
@@ -102,6 +103,10 @@ type (
 		UnBind(interface{}, interface{}) bool
 		IsBound(interface{}, interface{}) bool
 		// UnBindAll(interface{}, interface{}) bool
+	}
+
+	//GraphIterators provide custom iterators for graph eg dept-first,bread-first,depthlevel or tagged iteration
+	GraphIterators struct {
 	}
 
 	//Nodes represents the standard Graph interface
@@ -128,6 +133,7 @@ type (
 	//Graph represent a standard structure of nodes
 	Graph struct {
 		nodes *NodeSet
+		uid   string
 	}
 
 	//Node represents an element in the graph

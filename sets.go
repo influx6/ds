@@ -31,7 +31,7 @@ func (n *NodeSet) RemoveNode(data Nodes) {
 
 //AddNode adds a new node into the list
 func (n *NodeSet) AddNode(data Nodes) {
-	defer atomic.StoreInt64(&n.dirty, 1)
+	atomic.StoreInt64(&n.dirty, 1)
 	n.set.Push(data)
 }
 

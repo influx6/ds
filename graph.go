@@ -1,6 +1,13 @@
 package ds
 
-import "github.com/influx6/flux"
+import (
+	"fmt"
+	"strings"
+
+	"code.google.com/p/go-uuid/uuid"
+
+	"github.com/influx6/flux"
+)
 
 //NewSocket creates a new socket between two nodes with a set weight
 func NewSocket(from, to Nodes, weight int) *Socket {
@@ -215,6 +222,22 @@ func (n *Graph) AddForeignNode(r Nodes) {
 	}
 }
 
+//UID returns the auto generated uuid for this graph
+func (n *Graph) UID() string {
+	return n.uid
+}
+
+func (n *Graph) String() string {
+	return strings.Join([]string{
+		fmt.Sprintf("<Graph UID='%s'>\n", n.uid),
+		"-> Nodes Length",
+		fmt.Sprintf("%d", n.Length()),
+		"\n",
+		"-> Content (DeptFirst Mode):",
+		"\n</Graph>",
+	}, " ")
+}
+
 //Add as a new node into the graph
 func (n *Graph) Add(r ...interface{}) {
 	for _, v := range r {
@@ -263,5 +286,6 @@ func (n *Graph) IsBound(r, f interface{}) bool {
 func NewGraph() *Graph {
 	return &Graph{
 		nodes: NewNodeSet(),
+		uid:   uuid.New(),
 	}
 }
