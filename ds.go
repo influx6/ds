@@ -15,6 +15,8 @@ var (
 	ErrBadNode = errors.New("BadNode not in list")
 	//ErrNoEdge indicates this node does not belong in the list of edged
 	ErrNoEdge = errors.New("Node not in edges")
+	//ErrBadBind indicates this node does not belong
+	ErrBadBind = errors.New("BadBind unable to bind nodes")
 )
 
 type (
@@ -101,6 +103,8 @@ type (
 		AddForeignNode(r Nodes)
 		Bind(interface{}, interface{}, int) (*Socket, bool)
 		UnBind(interface{}, interface{}) bool
+		BindNodes(Nodes, Nodes, int) (*Socket, bool)
+		UnBindNodes(Nodes, Nodes) bool
 		IsBound(interface{}, interface{}) bool
 		// UnBindAll(interface{}, interface{}) bool
 	}

@@ -245,6 +245,25 @@ func (n *Graph) Add(r ...interface{}) {
 	}
 }
 
+//BindNodes binds the two nodes of this values
+func (n *Graph) BindNodes(r, f Nodes, we int) (*Socket, bool) {
+	if r.Graph() != n || f.Graph() != n {
+		return nil, false
+	}
+
+	return r.Connect(f, we), true
+}
+
+//UnBindNodes binds the two nodes of this values
+func (n *Graph) UnBindNodes(r, f Nodes) bool {
+	if r.Graph() != n || f.Graph() != n {
+		return false
+	}
+
+	r.Disconnect(f)
+	return true
+}
+
 //Bind binds the two nodes of this values
 func (n *Graph) Bind(r, f interface{}, we int) (*Socket, bool) {
 	rx, rk := n.nodes.GetNode(r)
