@@ -11,12 +11,16 @@ import (
 var (
 	//ErrBadList indicates this list is invalid
 	ErrBadList = errors.New("Invalid List")
+	//ErrBadIndex indicates this node index does not belong
+	ErrBadIndex = errors.New("BadIndex value")
 	//ErrBadNode indicates this node does not belong
 	ErrBadNode = errors.New("BadNode not in list")
 	//ErrNoEdge indicates this node does not belong in the list of edged
 	ErrNoEdge = errors.New("Node not in edges")
 	//ErrBadBind indicates this node does not belong
 	ErrBadBind = errors.New("BadBind unable to bind nodes")
+	//ErrBadEdgeType indicates that the value of a iterator is not a *Socket
+	ErrBadEdgeType = errors.New("value is not a *Socket type")
 )
 
 type (
@@ -25,6 +29,7 @@ type (
 	Equalers interface {
 		// Values
 		Equals(interface{}) bool
+		// Equal(interface{}) bool
 	}
 
 	//EqualSet defines a set of
@@ -67,7 +72,6 @@ type (
 	MovableDeferIterator interface {
 		DeferIterator
 		Previous() error
-		HasPrevious() bool
 	}
 
 	//DeferNode represents a standard node meeting DeferNode requirements
@@ -106,11 +110,8 @@ type (
 		BindNodes(Nodes, Nodes, int) (*Socket, bool)
 		UnBindNodes(Nodes, Nodes) bool
 		IsBound(interface{}, interface{}) bool
+		nodeSet() *NodeSet
 		// UnBindAll(interface{}, interface{}) bool
-	}
-
-	//GraphIterators provide custom iterators for graph eg dept-first,bread-first,depthlevel or tagged iteration
-	GraphIterators struct {
 	}
 
 	//Nodes represents the standard Graph interface
@@ -132,6 +133,8 @@ type (
 		ChangeGraph(Graphs)
 		//Graph returns the graph of the node
 		Graph() Graphs
+		Arcs() DeferIterator
+		String() string
 	}
 
 	//Graph represent a standard structure of nodes
@@ -154,5 +157,57 @@ type (
 		To     Nodes
 		From   Nodes
 		Weight int
+	}
+
+	//NodeCache provides a means of caching current node and current node iterator
+	NodeCache struct {
+		Node Nodes
+		Itr  DeferIterator
+	}
+
+	//GraphIterator provide custom iterators for graph eg dept-first,bread-first,depthlevel or tagged iteration
+	GraphIterator struct {
+		// sequence.Iterable
+		graph   Graphs
+		cache   []*NodeCache
+		visited map[Nodes]bool
+		started int64
+		depth   int
+		current Nodes
+	}
+
+	//GraphIterable provide a custom iterator type call
+	GraphIterable interface {
+		Unvisited() []Nodes
+		Node() Nodes
+		Next() error
+		Reset()
+	}
+
+	daxdfs struct {
+		itr *DFSIterator
+	}
+
+	daxbfs struct {
+		itr *BFSIterator
+	}
+
+	//DFSIterator provides a depth first iterator for a graph
+	DFSIterator struct {
+		*GraphIterator
+	}
+
+	//BFSIterator provides a breadth-first iterator for a graph
+	BFSIterator struct {
+		*GraphIterator
+	}
+
+	//GraphHandlers provide a type for running on graph iterators
+	GraphHandlers func(Nodes) error
+
+	//GraphProc provides a means of running a function on all nodes of a graph
+	GraphProc struct {
+		GraphIterable
+		fx GraphHandlers
 	}
 )

@@ -257,6 +257,11 @@ func (d *DeferList) Tail() *DeferNode {
 	return d.tail(nil)
 }
 
+//IsEmpty returns a false/true to indicate emptiness
+func (d *DeferList) IsEmpty() bool {
+	return d.root == nil && d.tail == nil
+}
+
 //Length returns the size of the list
 func (d *DeferList) Length() int {
 	return int(atomic.LoadInt64(&d.size))
@@ -364,7 +369,7 @@ func (d *DeferList) AddAfter(f *DeferNode, r interface{}) *DeferNode {
 func (d *DeferList) PushList(r *DeferList) {
 	nx := r.Iterator()
 
-	for nx.HasNext() {
+	for nx.Next() == nil {
 		nr, ok := nx.Value().(*DeferNode)
 
 		if ok {
@@ -377,7 +382,7 @@ func (d *DeferList) PushList(r *DeferList) {
 func (d *DeferList) PushBackList(r *DeferList) {
 	nx := r.Iterator()
 
-	for nx.HasNext() {
+	for nx.Next() == nil {
 		nr, ok := nx.Value().(*DeferNode)
 
 		if ok {
@@ -441,54 +446,6 @@ func (d *DeferList) Clear() {
 	d.root = nil
 }
 
-//Previous defines the decrement for the iterator
-func (lx *DeferListIterator) Previous() error {
-	state := atomic.LoadInt64(&lx.state)
-	if lx.current == nil && state > 0 {
-		return sequence.ErrBADINDEX
-	}
-
-	if lx.current == nil && state <= 0 {
-		lx.current = lx.list.Tail()
-		atomic.StoreInt64(&lx.state, 1)
-		return nil
-	}
-
-	nx := lx.current.Previous()
-
-	lx.current = nx
-
-	if nx == nil {
-		return sequence.ErrENDINDEX
-	}
-
-	return nil
-}
-
-//Next defines the incrementer for the iterator
-func (lx *DeferListIterator) Next() error {
-	state := atomic.LoadInt64(&lx.state)
-
-	if lx.current == nil && state > 0 {
-		return sequence.ErrBADINDEX
-	}
-
-	if lx.current == nil && state <= 0 {
-		lx.current = lx.list.Root()
-		atomic.StoreInt64(&lx.state, 1)
-		return nil
-	}
-
-	nx := lx.current.Next()
-
-	lx.current = nx
-	if nx == nil {
-		return sequence.ErrENDINDEX
-	}
-
-	return nil
-}
-
 //Length returns the length of the list
 func (lx *DeferListIterator) Length() int {
 	return lx.list.Length()
@@ -533,60 +490,59 @@ func (lx *DeferListIterator) Key() interface{} {
 	return lx.current
 }
 
-//HasNext defines the falsy/truthy of a possible next node
-func (lx *DeferListIterator) HasNext() bool {
+//Previous defines the decrement for the iterator
+func (lx *DeferListIterator) Previous() error {
 	state := atomic.LoadInt64(&lx.state)
 
-	// if state <= 0 {
-	// 	return true
-	// }
-
 	if lx.current == nil && state > 0 {
-		return false
-	}
-
-	if lx.current == nil && state <= 0 {
-		if lx.list.Root() == nil {
-			return false
-		}
-		lx.current = lx.list.Root()
-		atomic.StoreInt64(&lx.state, 1)
-		return true
-	}
-
-	if lx.current != nil {
-		return true
-	}
-
-	return false
-}
-
-//HasPrevious defines the falsy/truthy of a possible next node
-func (lx *DeferListIterator) HasPrevious() bool {
-	state := atomic.LoadInt64(&lx.state)
-
-	// if state <= 0 {
-	// 	return true
-	// }
-
-	if lx.current == nil && state > 0 {
-		return false
+		return sequence.ErrBADINDEX
 	}
 
 	if lx.current == nil && state <= 0 {
 		if lx.list.Tail() == nil {
-			return false
+			return sequence.ErrBADINDEX
 		}
 		lx.current = lx.list.Tail()
 		atomic.StoreInt64(&lx.state, 1)
-		return true
+		return nil
 	}
 
-	if lx.current != nil {
-		return true
+	nx := lx.current.Previous()
+
+	lx.current = nx
+
+	if nx == nil {
+		return sequence.ErrENDINDEX
 	}
 
-	return false
+	return nil
+}
+
+//Next defines the incrementer for the iterator
+func (lx *DeferListIterator) Next() error {
+	state := atomic.LoadInt64(&lx.state)
+
+	if lx.current == nil && state > 0 {
+		return sequence.ErrBADINDEX
+	}
+
+	if lx.current == nil && state <= 0 {
+		if lx.list.Root() == nil {
+			return sequence.ErrBADINDEX
+		}
+		lx.current = lx.list.Root()
+		atomic.StoreInt64(&lx.state, 1)
+		return nil
+	}
+
+	nx := lx.current.Next()
+
+	lx.current = nx
+	if nx == nil {
+		return sequence.ErrENDINDEX
+	}
+
+	return nil
 }
 
 //NewListIterator returns a iterator for the *DeferList

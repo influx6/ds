@@ -36,7 +36,7 @@ func (n *Node) ChangeValue(d interface{}) {
 func (n *Node) ChangeGraph(g Graphs) {
 	itr := n.arcs.Iterator()
 
-	for itr.HasNext() {
+	for itr.Next() == nil {
 		cur, ok := itr.Value().(*Socket)
 		if ok {
 			cur.Close()
@@ -57,14 +57,12 @@ func (n *Node) Equals(d interface{}) bool {
 	dx, ok := d.(Nodes)
 
 	if ok {
+		if dx == n {
+			return true
+		}
 		return dx.Value() == n.data
 	}
 
-	// dc, ok := d.(*Node)
-	//
-	// if ok {
-	// 	return dc.data == n.data
-	// }
 	return n.data == d
 }
 
@@ -91,11 +89,10 @@ func (n *Node) GetEdge(r Nodes) (*Socket, error) {
 
 	itr := n.arcs.Iterator()
 
-	for itr.HasNext() {
+	for itr.Next() == nil {
 		sock, _ := itr.Value().(*Socket)
 
 		if sock.To != r {
-			itr.Next()
 			continue
 		}
 
@@ -109,14 +106,12 @@ func (n *Node) GetEdge(r Nodes) (*Socket, error) {
 func (n *Node) HasEdge(r Nodes) bool {
 	itr := n.arcs.Iterator()
 
-	for itr.HasNext() {
+	for itr.Next() == nil {
 		sock, _ := itr.Value().(*Socket)
 
 		if sock.To == r {
-			itr.Next()
 			return true
 		}
-		itr.Next()
 	}
 
 	return false
@@ -126,10 +121,9 @@ func (n *Node) HasEdge(r Nodes) bool {
 func (n *Node) RemovalEdges() {
 	itr := n.arcs.Iterator()
 
-	for itr.HasNext() {
+	for itr.Next() == nil {
 		sock, _ := itr.Value().(*Socket)
 		sock.Close()
-		itr.Next()
 	}
 
 	n.arcs.Clear()
@@ -138,7 +132,7 @@ func (n *Node) RemovalEdges() {
 func (n *Node) disconnect(r Nodes, one bool) {
 	itr := n.arcs.Iterator()
 
-	for itr.HasNext() {
+	for itr.Next() == nil {
 		sock, _ := itr.Value().(*Socket)
 
 		if sock.To == r {
@@ -154,7 +148,6 @@ func (n *Node) disconnect(r Nodes, one bool) {
 				break
 			}
 
-			itr.Next()
 		}
 	}
 }
@@ -184,6 +177,17 @@ func NewGraphNode(d interface{}, g Graphs) *Node {
 		arcs:           List(),
 		graph:          g,
 	}
+}
+
+//String returns the string value
+func (n *Node) String() string {
+	return fmt.Sprintf("%+v", n.Value())
+}
+
+//Arcs returns an iterator of all the arcs/edges of this node
+func (n *Node) Arcs() DeferIterator {
+	itr := n.arcs.Iterator()
+	return itr.(DeferIterator)
 }
 
 //Value returns the value of the node
@@ -276,6 +280,11 @@ func (n *Graph) Bind(r, f interface{}, we int) (*Socket, bool) {
 	return rx.Connect(fx, we), true
 }
 
+//nodeSet returns the internal graph nodeset
+func (n *Graph) nodeSet() *NodeSet {
+	return n.nodes
+}
+
 //UnBind unbinds the two nodes of this values
 func (n *Graph) UnBind(r, f interface{}) bool {
 	rx, rk := n.nodes.GetNode(r)
@@ -307,4 +316,117 @@ func NewGraph() *Graph {
 		nodes: NewNodeSet(),
 		uid:   uuid.New(),
 	}
+}
+
+//BaseGraphIterator returns a baselevel iterator struct
+func BaseGraphIterator(g Graphs, depth int) *GraphIterator {
+	return &GraphIterator{
+		graph:   g,
+		depth:   depth,
+		visited: make(map[Nodes]bool),
+	}
+}
+
+//lastCache returns the last node cached
+func (d *GraphIterator) lastCache() (*NodeCache, error) {
+	clen := len(d.cache)
+
+	if clen <= 0 {
+		return nil, ErrBadIndex
+	}
+
+	return d.cache[clen-1], nil
+}
+
+func (d *GraphIterator) addCache(n Nodes) {
+	d.cache = append(d.cache, NewNodeCache(n))
+}
+
+//Length returns the length of the graph
+func (d *GraphIterator) Length() int {
+	return d.graph.nodeSet().Length()
+}
+
+//Key returns the graph itself
+func (d *GraphIterator) Key() interface{} {
+	return d.graph
+}
+
+//Unvisited returns the current set of unvisited nodes before a .Reset()
+//called after a search if Reset() has been called a empty list is returned
+func (d *GraphIterator) Unvisited() []Nodes {
+	unvs := []Nodes{}
+
+	if len(d.visited) <= 0 {
+		return d.graph.nodeSet().AllNodes()
+	}
+
+	d.graph.nodeSet().EachNode(func(nx Nodes) {
+		if !d.visited[nx] {
+			unvs = append(unvs, nx)
+		}
+	})
+	return unvs
+}
+
+//Reset resets the iterator
+func (d *GraphIterator) Reset() {
+	d.cache = d.cache[:0]
+	d.visited = make(map[Nodes]bool)
+	d.current = nil
+}
+
+func (d *GraphIterator) unCache() {
+	d.cache = d.cache[:len(d.cache)-1]
+}
+
+//Next calls the iterator next call
+func (d *GraphProc) Next() error {
+	err := d.GraphIterable.Next()
+
+	if err != nil {
+		return err
+	}
+
+	return d.fx(d.Node())
+}
+
+//Next calls the iterator next call
+func (d *daxdfs) Next() error {
+	return d.itr.Next()
+}
+
+//Reset resets the iterator
+func (d *daxdfs) Reset() {
+	d.itr.Reset()
+}
+
+//Unvisited returns the unvisited nodes
+func (d *daxdfs) Unvisited() []Nodes {
+	return d.itr.Unvisited()
+}
+
+//Node returns the current node
+func (d *daxdfs) Node() Nodes {
+	return d.itr.Value().(Nodes)
+}
+
+//Unvisited returns the unvisited nodes
+func (d *daxbfs) Unvisited() []Nodes {
+	return d.itr.Unvisited()
+}
+
+//Next calls the iterator next call
+func (d *daxbfs) Next() error {
+	return d.itr.Next()
+}
+
+//Reset resets the iterator
+func (d *daxbfs) Reset() {
+	d.itr.Reset()
+}
+
+//Node returns the current node
+func (d *daxbfs) Node() Nodes {
+	return d.itr.Value().(Nodes)
 }

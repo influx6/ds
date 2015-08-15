@@ -24,6 +24,40 @@ func (n *NodeSet) Length() int {
 	return n.set.Length()
 }
 
+//GetIndex returns the node at this index
+func (n *NodeSet) GetIndex(ind int) (Nodes, error) {
+	if ind < 0 {
+		ind = n.set.Length() - ind
+	}
+
+	if ind >= n.set.Length() {
+		return nil, ErrBadIndex
+	}
+
+	return n.set.Get(ind).(Nodes), nil
+}
+
+//FirstNode returns the first node
+func (n *NodeSet) FirstNode() (Nodes, error) {
+	return n.GetIndex(0)
+}
+
+//AllNodes return the internal nodes
+func (n *NodeSet) AllNodes() []Nodes {
+	nodes := []Nodes{}
+
+	n.set.Each(func(v Equalers, _ int, _ func()) {
+		nodes = append(nodes, v.(Nodes))
+	})
+
+	return nodes
+}
+
+//LastNode returns the first node
+func (n *NodeSet) LastNode() (Nodes, error) {
+	return n.GetIndex(n.Length() - 1)
+}
+
 //RemoveNode adds a new node into the list
 func (n *NodeSet) RemoveNode(data Nodes) {
 	n.set.Remove(data)
@@ -33,6 +67,29 @@ func (n *NodeSet) RemoveNode(data Nodes) {
 func (n *NodeSet) AddNode(data Nodes) {
 	atomic.StoreInt64(&n.dirty, 1)
 	n.set.Push(data)
+}
+
+//EachNode calls the internal set Each method
+func (n *NodeSet) EachNode(fx func(Nodes)) {
+	if fx == nil {
+		return
+	}
+	n.Each(func(nx Nodes, _ int, _ func()) {
+		fx(nx)
+	})
+}
+
+//Each calls the internal set Each method
+func (n *NodeSet) Each(fx func(Nodes, int, func())) {
+	if fx == nil {
+		return
+	}
+	n.set.Each(func(v Equalers, k int, sm func()) {
+		nx, ok := v.(Nodes)
+		if ok {
+			fx(nx, k, sm)
+		}
+	})
 }
 
 //GetNode return the node if found with the value
@@ -53,6 +110,17 @@ func (n *NodeSet) GetNode(data interface{}) (Nodes, bool) {
 	return nil, ok
 }
 
+//AllNodes return the internal nodes
+func (n *DeferNodeSet) AllNodes() []*DeferNode {
+	nodes := []*DeferNode{}
+
+	n.set.Each(func(v Equalers, _ int, _ func()) {
+		nodes = append(nodes, v.(*DeferNode))
+	})
+
+	return nodes
+}
+
 //Length returns the size of the set
 func (n *DeferNodeSet) Length() int {
 	return n.set.Length()
@@ -63,10 +131,51 @@ func (n *DeferNodeSet) RemoveNode(data *DeferNode) {
 	n.set.Remove(data)
 }
 
+//GetIndex returns the node at this index
+func (n *DeferNodeSet) GetIndex(ind int) (*DeferNode, error) {
+	if ind <= 0 {
+		ind = n.set.Length() - ind
+	}
+	if ind >= n.set.Length() {
+		return nil, ErrBadIndex
+	}
+	return n.set.Get(ind).(*DeferNode), nil
+}
+
+//FirstNode returns the first node
+func (n *DeferNodeSet) FirstNode() (*DeferNode, error) {
+	return n.GetIndex(0)
+}
+
+//LastNode returns the first node
+func (n *DeferNodeSet) LastNode() (*DeferNode, error) {
+	return n.GetIndex(n.Length() - 1)
+}
+
 //AddNode adds a new node into the list
 func (n *DeferNodeSet) AddNode(data *DeferNode) {
 	defer atomic.StoreInt64(&n.dirty, 1)
 	n.set.Push(data)
+}
+
+//EachNode calls the internal set Each method
+func (n *DeferNodeSet) EachNode(fx func(*DeferNode)) {
+	if fx == nil {
+		return
+	}
+	n.Each(func(nx *DeferNode, _ int, _ func()) {
+		fx(nx)
+	})
+}
+
+//Each calls the internal set Each method
+func (n *DeferNodeSet) Each(fx func(*DeferNode, int, func())) {
+	n.set.Each(func(v Equalers, k int, sm func()) {
+		nx, ok := v.(*DeferNode)
+		if ok {
+			fx(nx, k, sm)
+		}
+	})
 }
 
 //GetNode return the node if found with the value
@@ -149,12 +258,17 @@ func (b *baseset) Push(e ...Equalers) {
 }
 
 //Each iterates all set data using a callback
-func (b *baseset) Each(fx func(Equalers, int)) {
+func (b *baseset) Each(fx func(Equalers, int, func())) {
 	if fx == nil {
 		return
 	}
+
+	kill := false
 	for k, v := range b.set {
-		fx(v, k)
+		if kill {
+			break
+		}
+		fx(v, k, func() { kill = true })
 	}
 }
 

@@ -15,22 +15,22 @@ func TestListIterator(t *testing.T) {
 		t.Fatal("Error occured creating list iterator")
 	}
 
-	if !itr.HasNext() {
+	if itr.Next() != nil {
 		t.Fatal("List iterator can not get next even though just created")
 	}
 
-	for itr.HasNext() {
+	itr.Reset()
+
+	for itr.Next() == nil {
 		t.Logf("Forward-Value: %+v:", itr.Value())
-		itr.Next()
 	}
 
 	itr.Reset()
 
 	ptr, ok := itr.(MovableDeferIterator)
 	if ok {
-		for ptr.HasPrevious() {
+		for ptr.Previous() == nil {
 			t.Logf("Backward-Value: %+v", ptr.Value())
-			ptr.Previous()
 		}
 	}
 
