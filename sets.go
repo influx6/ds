@@ -5,9 +5,38 @@ import (
 	"sync/atomic"
 )
 
+//Equals return the equality of a string
+func (s String) Equals(n interface{}) bool {
+	rs, ok := n.(string)
+
+	if ok {
+		return s.String() == rs
+	}
+
+	ss, ok := n.(String)
+
+	if ok {
+		return ss.String() == s.String()
+	}
+
+	return false
+}
+
+//String returns the string wrapped up
+func (s String) String() string {
+	return string(s)
+}
+
 //NewNodeSet returns the set for nodes
 func NewNodeSet() *NodeSet {
 	return &NodeSet{
+		set: SafeSet(),
+	}
+}
+
+//NewStringSet returns the set of string values
+func NewStringSet() *StringSet {
+	return &StringSet{
 		set: SafeSet(),
 	}
 }
@@ -17,6 +46,104 @@ func NewDeferNodeSet() *DeferNodeSet {
 	return &DeferNodeSet{
 		set: SafeSet(),
 	}
+}
+
+//GetIndex returns the node at this index
+func (n *StringSet) GetIndex(ind int) (string, error) {
+	if ind < 0 {
+		ind = n.set.Length() - ind
+	}
+
+	if ind >= n.set.Length() {
+		return "", ErrBadIndex
+	}
+
+	v := n.set.Get(ind).(String)
+
+	return v.String(), nil
+}
+
+//First returns the first node
+func (n *StringSet) First() (string, error) {
+	return n.GetIndex(0)
+}
+
+//All return the internal nodes
+func (n *StringSet) All() []string {
+	nodes := []string{}
+
+	n.set.Each(func(v Equalers, _ int, _ func()) {
+		vs := v.(String)
+		nodes = append(nodes, vs.String())
+	})
+
+	return nodes
+}
+
+//Last returns the first node
+func (n *StringSet) Last() (string, error) {
+	return n.GetIndex(n.Length() - 1)
+}
+
+//Remove adds a new node into the list
+func (n *StringSet) Remove(data string) {
+	n.set.Remove(String(data))
+}
+
+//Add adds a new node into the list
+func (n *StringSet) Add(data string) {
+	atomic.StoreInt64(&n.dirty, 1)
+	n.set.Push(String(data))
+}
+
+//EachString calls the internal set Each method
+func (n *StringSet) EachString(fx func(string)) {
+	if fx == nil {
+		return
+	}
+	n.Each(func(nx string, _ int, _ func()) {
+		fx(nx)
+	})
+}
+
+//Each calls the internal set Each method
+func (n *StringSet) Each(fx func(string, int, func())) {
+	if fx == nil {
+		return
+	}
+	n.set.Each(func(v Equalers, k int, sm func()) {
+		nx, ok := v.(String)
+		if ok {
+			fx(nx.String(), k, sm)
+		}
+	})
+}
+
+//Get return the node if found with the value
+func (n *StringSet) Get(data interface{}) (string, bool) {
+
+	if n.dirty > 0 {
+		n.set.Sanitize()
+		atomic.StoreInt64(&n.dirty, 0)
+	}
+
+	ds := data.(string)
+	ind, ok := n.set.Find(String(ds))
+
+	if ok {
+		pn, kx := n.set.Get(ind).(String)
+		if !kx {
+			return "", false
+		}
+		return pn.String(), ok
+	}
+
+	return "", ok
+}
+
+//Length returns the size of the set
+func (n *StringSet) Length() int {
+	return n.set.Length()
 }
 
 //Length returns the size of the set

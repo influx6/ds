@@ -26,6 +26,22 @@ func massAdd(fx func(...Equalers), v ...int) {
 	}
 }
 
+func TestStringSet(t *testing.T) {
+	vs := NewStringSet()
+
+	if vs == nil {
+		t.Fatal("Unable to create string set")
+	}
+
+	vs.Add("alex")
+
+	_, got := vs.Get("alex")
+
+	if !got {
+		t.Fatal("failed to get alex from set")
+	}
+}
+
 func TestSet(t *testing.T) {
 	bs := UnSafeSet()
 

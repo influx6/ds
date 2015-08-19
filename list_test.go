@@ -22,7 +22,9 @@ func TestListIterator(t *testing.T) {
 	itr.Reset()
 
 	for itr.Next() == nil {
-		t.Logf("Forward-Value: %+v:", itr.Value())
+		if itr.Value() == nil {
+			t.Fatal("Forward iterator produced a nil")
+		}
 	}
 
 	itr.Reset()
@@ -30,11 +32,11 @@ func TestListIterator(t *testing.T) {
 	ptr, ok := itr.(MovableDeferIterator)
 	if ok {
 		for ptr.Previous() == nil {
-			t.Logf("Backward-Value: %+v", ptr.Value())
+			if ptr.Value() == nil {
+				t.Fatal("Reverse iterator produced a nil")
+			}
 		}
 	}
-
-	t.Log("Finished Iterator List")
 
 	pack.Clear()
 }

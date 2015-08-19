@@ -45,6 +45,15 @@ type (
 		rw  *sync.RWMutex
 	}
 
+	//String provides a super-type alias for strings
+	String string
+
+	//StringSet provides a set impl for strings
+	StringSet struct {
+		set   *baseset
+		dirty int64
+	}
+
 	//NodeSet provides a set implementation for graph nodes
 	NodeSet struct {
 		set   *baseset
@@ -158,6 +167,7 @@ type (
 	//Socket represents a connection between two nodes
 	Socket struct {
 		flux.StringMappable
+		Attrs  *StringSet
 		To     Nodes
 		From   Nodes
 		Weight int
@@ -183,10 +193,11 @@ type (
 
 	//TransversalDirective provides a directive for transversing graphs
 	TransversalDirective struct {
-		Depth    int
-		Order    TransversalOrder
-		Revisits VisitCaller
-		AllNodes bool
+		Depth     int
+		Order     TransversalOrder
+		Revisits  VisitCaller
+		Heuristic NodeOp
+		AllNodes  bool
 	}
 
 	//Unvisited provides a function map for unvisited nodes
@@ -216,14 +227,40 @@ type (
 		reset         Fx
 	}
 
-	//GraphHandlers provide a type for running on graph iterators
-	GraphHandlers func(Nodes, *Socket) error
+	//NodeOp provide a type for running on graph iterators
+	NodeOp func(Nodes, *Socket) error
+
+	//NodeDop is (Node Depth Operation) provide a type for running on graph iterators
+	NodeDop func(Nodes, *Socket, int) error
+
+	//NodeEval provides a evalutor format type
+	NodeEval func(Nodes, *Socket, int) bool
 
 	//GraphProc provides a means of running a function on all nodes of a graph
 	GraphProc struct {
 		trans *Transversor
-		fx    GraphHandlers
+		fx    NodeDop
 		g     Graphs
+	}
+
+	//GraphFilter provides a higher level filtering system ontop of the graphsearching framework
+	GraphFilter struct {
+		conditions NodeDop
+		proc       *GraphProc
+		paths      []*FilterNode
+	}
+
+	//FilterNode provides a data type for inbetween filters
+	FilterNode struct {
+		Node   Nodes
+		Socket *Socket
+		Depth  int
+	}
+
+	//FilterBuilder provides a means of building a filter criteria
+	FilterBuilder struct {
+		filter *GraphFilter
+		stack  NodeDop
 	}
 )
 

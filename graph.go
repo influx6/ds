@@ -13,6 +13,7 @@ import (
 func NewSocket(from, to Nodes, weight int) *Socket {
 	return &Socket{
 		StringMappable: flux.NewCollector(),
+		Attrs:          NewStringSet(),
 		To:             to,
 		From:           from,
 		Weight:         weight,
