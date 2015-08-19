@@ -318,115 +318,140 @@ func NewGraph() *Graph {
 	}
 }
 
-//BaseGraphIterator returns a baselevel iterator struct
-func BaseGraphIterator(g Graphs, depth int) *GraphIterator {
-	return &GraphIterator{
-		graph:   g,
-		depth:   depth,
-		visited: make(map[Nodes]bool),
+//UnvisitedUtil returns the current set of unvisited nodes
+func UnvisitedUtil(g Graphs, visited NodeMaps) []Nodes {
+	unvs := []Nodes{}
+
+	if len(visited) <= 0 {
+		return g.nodeSet().AllNodes()
 	}
+
+	g.nodeSet().EachNode(func(nx Nodes) {
+		if !visited[nx] {
+			unvs = append(unvs, nx)
+		}
+	})
+
+	return unvs
 }
 
-//lastCache returns the last node cached
-func (d *GraphIterator) lastCache() (*NodeCache, error) {
-	clen := len(d.cache)
+//Reset resets the cache
+func (d *NodeMaps) Reset() {
+	*d = make(map[Nodes]bool)
+}
+
+//Add removes the last node cache
+func (d *NodeMaps) Add(n Nodes) {
+	(*d)[n] = true
+}
+
+//Valid removes the last node cache
+func (d *NodeMaps) Valid(n Nodes) bool {
+	return (*d)[n]
+}
+
+//Length returns the length node cache
+func (d *NodeMaps) Length() int {
+	return len(*d)
+}
+
+//Length returns the length the cache
+func (d *NodeCaches) Length() int {
+	return len(*d)
+}
+
+//Reset resets the cache
+func (d *NodeCaches) Reset() {
+	*d = (*d)[:0]
+}
+
+//UncacheRight removes the first node cache and closes the cache object
+func (d *NodeCaches) UncacheRight() {
+	nx := (*d)[0]
+	*d = (*d)[1:]
+	nx.Close()
+}
+
+//Uncache removes the last node cache and closes the cache object
+func (d *NodeCaches) Uncache() {
+	nx := (*d)[len(*d)-1]
+	*d = (*d)[:len(*d)-1]
+	nx.Close()
+}
+
+//NthCache let you get a item at a point in the cache
+func (d *NodeCaches) NthCache(ind int) (*NodeCache, error) {
+	if ind >= d.Length() {
+		return nil, ErrBadIndex
+	}
+
+	var loc int
+
+	if ind < 0 {
+		loc = d.Length() - ind
+	} else {
+		loc = ind
+	}
+
+	return (*d)[loc], nil
+}
+
+//FirstCache returns the last node cached
+func (d *NodeCaches) FirstCache() (*NodeCache, error) {
+	clen := len(*d)
 
 	if clen <= 0 {
 		return nil, ErrBadIndex
 	}
 
-	return d.cache[clen-1], nil
+	return (*d)[0], nil
 }
 
-func (d *GraphIterator) addCache(n Nodes) {
-	d.cache = append(d.cache, NewNodeCache(n))
-}
+//LastCache returns the last node cached
+func (d *NodeCaches) LastCache() (*NodeCache, error) {
+	clen := len(*d)
 
-//Length returns the length of the graph
-func (d *GraphIterator) Length() int {
-	return d.graph.nodeSet().Length()
-}
-
-//Key returns the graph itself
-func (d *GraphIterator) Key() interface{} {
-	return d.graph
-}
-
-//Unvisited returns the current set of unvisited nodes before a .Reset()
-//called after a search if Reset() has been called a empty list is returned
-func (d *GraphIterator) Unvisited() []Nodes {
-	unvs := []Nodes{}
-
-	if len(d.visited) <= 0 {
-		return d.graph.nodeSet().AllNodes()
+	if clen <= 0 {
+		return nil, ErrBadIndex
 	}
 
-	d.graph.nodeSet().EachNode(func(nx Nodes) {
-		if !d.visited[nx] {
-			unvs = append(unvs, nx)
-		}
-	})
-	return unvs
+	return (*d)[clen-1], nil
 }
 
-//Reset resets the iterator
-func (d *GraphIterator) Reset() {
-	d.cache = d.cache[:0]
-	d.visited = make(map[Nodes]bool)
-	d.current = nil
+//AddCache adds a node to the cache
+func (d *NodeCaches) AddCache(n Nodes) {
+	*d = append(*d, NewNodeCache(n))
 }
 
-func (d *GraphIterator) unCache() {
-	d.cache = d.cache[:len(d.cache)-1]
+//VisitMaps returns a new NodeCache
+func VisitMaps() NodeMaps {
+	return make(NodeMaps)
 }
 
-//Next calls the iterator next call
-func (d *GraphProc) Next() error {
-	err := d.GraphIterable.Next()
+//NewCache returns a new NodeCache
+func NewCache() NodeCaches {
+	return make(NodeCaches, 0)
+}
 
-	if err != nil {
-		return err
+//NewNodeCache returns a new NodeCache
+func NewNodeCache(n Nodes) *NodeCache {
+	return &NodeCache{
+		Node: n,
+		Itr:  n.Arcs(),
 	}
-
-	return d.fx(d.Node())
 }
 
-//Next calls the iterator next call
-func (d *daxdfs) Next() error {
-	return d.itr.Next()
+//String returns the string of the node
+func (n *NodeCache) String() string {
+	if n.Node != nil {
+		return fmt.Sprintf("%+s", n.Node.Value())
+	}
+	return ""
 }
 
-//Reset resets the iterator
-func (d *daxdfs) Reset() {
-	d.itr.Reset()
-}
-
-//Unvisited returns the unvisited nodes
-func (d *daxdfs) Unvisited() []Nodes {
-	return d.itr.Unvisited()
-}
-
-//Node returns the current node
-func (d *daxdfs) Node() Nodes {
-	return d.itr.Value().(Nodes)
-}
-
-//Unvisited returns the unvisited nodes
-func (d *daxbfs) Unvisited() []Nodes {
-	return d.itr.Unvisited()
-}
-
-//Next calls the iterator next call
-func (d *daxbfs) Next() error {
-	return d.itr.Next()
-}
-
-//Reset resets the iterator
-func (d *daxbfs) Reset() {
-	d.itr.Reset()
-}
-
-//Node returns the current node
-func (d *daxbfs) Node() Nodes {
-	return d.itr.Value().(Nodes)
+//Close destroys this cache
+func (n *NodeCache) Close() error {
+	n.Node = nil
+	n.Itr = nil
+	return nil
 }

@@ -9,12 +9,16 @@ import (
 )
 
 var (
+	//ErrBadIterator indicates the iterator has an issue
+	ErrBadIterator = errors.New("Invalid Iterator State")
 	//ErrBadList indicates this list is invalid
 	ErrBadList = errors.New("Invalid List")
 	//ErrBadIndex indicates this node index does not belong
 	ErrBadIndex = errors.New("BadIndex value")
 	//ErrBadNode indicates this node does not belong
 	ErrBadNode = errors.New("BadNode not in list")
+	//ErrEmpty to indicate empty list or graph
+	ErrEmpty = errors.New("A list is empty")
 	//ErrNoEdge indicates this node does not belong in the list of edged
 	ErrNoEdge = errors.New("Node not in edges")
 	//ErrBadBind indicates this node does not belong
@@ -159,55 +163,77 @@ type (
 		Weight int
 	}
 
+	//NodeMaps represent the node map used by a iterator
+	NodeMaps map[Nodes]bool
+
+	//NodeCaches represent the node cache used by a iterator
+	NodeCaches []*NodeCache
+
 	//NodeCache provides a means of caching current node and current node iterator
 	NodeCache struct {
 		Node Nodes
 		Itr  DeferIterator
 	}
 
-	//GraphIterator provide custom iterators for graph eg dept-first,bread-first,depthlevel or tagged iteration
-	GraphIterator struct {
-		// sequence.Iterable
-		graph   Graphs
-		cache   []*NodeCache
-		visited map[Nodes]bool
-		started int64
-		depth   int
-		current Nodes
+	//TransversalOrder provides a order for TranversalDirective
+	TransversalOrder string
+
+	//VisitCaller provides a type for visit checks
+	VisitCaller func(Nodes, bool) bool
+
+	//TransversalDirective provides a directive for transversing graphs
+	TransversalDirective struct {
+		Depth    int
+		Order    TransversalOrder
+		Revisits VisitCaller
+		AllNodes bool
 	}
 
-	//GraphIterable provide a custom iterator type call
-	GraphIterable interface {
-		Unvisited() []Nodes
-		Node() Nodes
-		Next() error
-		Reset()
-	}
+	//Unvisited provides a function map for unvisited nodes
+	Unvisited func(Graphs) []Nodes
 
-	daxdfs struct {
-		itr *DFSIterator
-	}
+	//Next provides a function type for the next function
+	Next func() error
 
-	daxbfs struct {
-		itr *BFSIterator
-	}
+	//GNode returns a node type
+	GNode func() Nodes
 
-	//DFSIterator provides a depth first iterator for a graph
-	DFSIterator struct {
-		*GraphIterator
-	}
+	//Fx provides the default func type
+	Fx func()
 
-	//BFSIterator provides a breadth-first iterator for a graph
-	BFSIterator struct {
-		*GraphIterator
+	//UseNode provides the use node type
+	UseNode func(Nodes)
+
+	//Transversor provide functional transversal provider
+	Transversor struct {
+		directive     *TransversalDirective
+		from, current Nodes
+		keys          map[Nodes]*Socket
+		started       int64
+		walkdepth     int64
+		visited       NodeMaps
+		next          Next
+		reset         Fx
 	}
 
 	//GraphHandlers provide a type for running on graph iterators
-	GraphHandlers func(Nodes) error
+	GraphHandlers func(Nodes, *Socket) error
 
 	//GraphProc provides a means of running a function on all nodes of a graph
 	GraphProc struct {
-		GraphIterable
-		fx GraphHandlers
+		trans *Transversor
+		fx    GraphHandlers
+		g     Graphs
 	}
+)
+
+const (
+	//DFPreOrder represents depth first order of starting with the node then go to the child nodes
+	DFPreOrder TransversalOrder = "depth-first-preorder"
+	//DFPostOrder represents depth first order of starting with the node children then go to the node
+	DFPostOrder TransversalOrder = "depth-first-postorder"
+	//BFPreOrder represents breadth first order of starting with the node then go to the child nodes
+	BFPreOrder TransversalOrder = "breadth-first-preorder"
+	//BFPostOrder represents breadth first order of starting with the node children then go to the node
+	BFPostOrder TransversalOrder = "breadth-first-postorder"
 )

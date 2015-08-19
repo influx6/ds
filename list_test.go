@@ -37,6 +37,4 @@ func TestListIterator(t *testing.T) {
 	t.Log("Finished Iterator List")
 
 	pack.Clear()
-
-	t.Log("Log:", pack)
 }

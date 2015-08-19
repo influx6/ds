@@ -7,197 +7,482 @@ import (
 	"github.com/influx6/sequence"
 )
 
-//DFSDax provides a dax wrapper over a DFSIterator
-func DFSDax(dfs *DFSIterator) *daxdfs {
-	return &daxdfs{dfs}
-}
-
-//BFSDax provides a dax wrapper over a BFSIterator
-func BFSDax(bfs *BFSIterator) *daxbfs {
-	return &daxbfs{bfs}
-}
-
-//NewNodeCache returns a new NodeCache
-func NewNodeCache(n Nodes) *NodeCache {
-	return &NodeCache{
-		Node: n,
-		Itr:  n.Arcs(),
-	}
-}
-
-//String returns the string of the node
-func (n *NodeCache) String() string {
-	return fmt.Sprintf("%+s", n.Node.Value())
-}
-
-//NewDFSIterator returns a depth-first traversal interator
-func NewDFSIterator(g Graphs, depth int) *DFSIterator {
-	return &DFSIterator{
-		GraphIterator: BaseGraphIterator(g, depth),
-	}
-}
-
-//NewBFSIterator returns a breadth-first traversal interator
-func NewBFSIterator(g Graphs, depth int) *BFSIterator {
-	return &BFSIterator{
-		GraphIterator: BaseGraphIterator(g, depth),
-	}
-}
-
-//Clone creates another iterator from the graph
-func (d *DFSIterator) Clone() sequence.Iterable {
-	return NewDFSIterator(d.graph, d.depth)
-}
-
-//Clone creates another iterator from the graph
-func (d *BFSIterator) Clone() sequence.Iterable {
-	return NewBFSIterator(d.graph, d.depth)
-}
-
-//Value returns the current node
-func (d *DFSIterator) Value() interface{} {
-	return d.current
-}
-
-//Value returns the current node
-func (d *BFSIterator) Value() interface{} {
-	return d.current
-}
-
-//hasNext returns true/false if it has more elements
-func (d *DFSIterator) hasNext() bool {
-
-	if len(d.cache) <= 0 && d.started > 0 {
-		return false
-	}
-
-	if len(d.cache) <= 0 {
-		first, err := d.graph.nodeSet().FirstNode()
-
-		if err != nil {
+var (
+	defaultVisit = func(n Nodes, visited bool) bool {
+		if visited {
 			return false
 		}
-
-		atomic.StoreInt64(&d.started, 1)
-		d.addCache(first)
+		return true
 	}
+)
 
-	return true
+//BFPreOrderDirective provides a copy of a breadth-first pre order rule
+func BFPreOrderDirective(d int, v VisitCaller) *TransversalDirective {
+	return MakeTransversalDirective(d, BFPreOrder, v)
 }
 
-//Next moves to the next element
-func (d *DFSIterator) Next() error {
-	if !d.hasNext() {
-		return sequence.ErrBADINDEX
+//BFPostOrderDirective provides a copy of a breath-first pre order rule
+func BFPostOrderDirective(d int, v VisitCaller) *TransversalDirective {
+	return MakeTransversalDirective(d, BFPostOrder, v)
+}
+
+//DFPreOrderDirective provides a copy of a depth-first pre order rule
+func DFPreOrderDirective(d int, v VisitCaller) *TransversalDirective {
+	return MakeTransversalDirective(d, DFPreOrder, v)
+}
+
+//DFPostOrderDirective provides a copy of a depth-first pre order rule
+func DFPostOrderDirective(d int, v VisitCaller) *TransversalDirective {
+	return MakeTransversalDirective(d, DFPostOrder, v)
+}
+
+//Search returns a GraphProc for depth-first
+func Search(fx GraphHandlers, dir *TransversalDirective) (*GraphProc, error) {
+
+	var verso *Transversor
+
+	switch dir.Order {
+	case DFPostOrder:
+		verso = DepthFirstPostOrder(dir)
+	case DFPreOrder:
+		verso = DepthFirstPreOrder(dir)
+	case BFPostOrder:
+		verso = BreadthFirstPostOrder(dir)
+	case BFPreOrder:
+		verso = BreadthFirstPreOrder(dir)
+	default:
+		return nil, fmt.Errorf("Unknown Transversal Order %s", dir.Order)
 	}
 
-	cur, err := d.lastCache()
+	return &GraphProc{
+		trans: verso,
+		fx:    fx,
+	}, nil
+}
 
-	if err != nil {
-		d.current = nil
-		return err
+//Use sets the node for transversal
+func (p *GraphProc) Use(n Nodes) {
+	if n == nil {
+		return
 	}
 
-	node, itr := cur.Node, cur.Itr
+	gr := n.Graph()
+	if gr == nil {
+		return
+	}
 
-	if !d.visited[node] {
-		d.visited[node] = true
-		d.current = node
+	p.g = gr
+	p.trans.Use(n)
+}
+
+//Unvisited calls the internal transversal unvisited caller
+func (p *GraphProc) Unvisited() []Nodes {
+	if p.g == nil {
 		return nil
 	}
+	return p.trans.Unvisited(p.g)
+}
 
-	err = itr.Next()
+//Reset calls the internal transversal reset caller
+func (p *GraphProc) Reset() {
+	p.g = nil
+	p.trans.Reset()
+}
 
-	if err != nil {
-		d.unCache()
-		return d.Next()
+//WalkDepth returns the current depth of Transversor
+func (p *GraphProc) WalkDepth() int {
+	return p.trans.WalkDepth()
+}
+
+//Next calls the internal transversal next caller
+func (p *GraphProc) Next() error {
+	if err := p.trans.Next(); err != nil {
+		return err
+	}
+	return p.fx(p.trans.Node(), p.trans.Key())
+}
+
+//MakeTransversalDirective creates a transversal directive
+func MakeTransversalDirective(depth int, order TransversalOrder, visit VisitCaller) *TransversalDirective {
+	if visit == nil {
+		visit = defaultVisit
+	}
+	return &TransversalDirective{
+		Depth:    depth,
+		Order:    order,
+		Revisits: visit,
+	}
+}
+
+//MakeTransversor returns a default Transversor
+func MakeTransversor(dir *TransversalDirective) *Transversor {
+	core := &Transversor{
+		directive: dir,
+		visited:   VisitMaps(),
+		keys:      make(map[Nodes]*Socket),
 	}
 
-	cursoc, ok := itr.Value().(*Socket)
+	return core
+}
 
+//Use sets the node to tranversal from
+func (t *Transversor) Use(n Nodes) {
+	t.from = n
+}
+
+//Unvisited returns the unvisited nodes
+func (t *Transversor) Unvisited(graph Graphs) []Nodes {
+	return UnvisitedUtil(graph, t.visited)
+}
+
+//WalkDepth returns the current depth of Transversor
+func (t *Transversor) WalkDepth() int {
+	return int(t.walkdepth)
+}
+
+//Key returns the Socket of the node if its not a root node
+func (t *Transversor) Key() *Socket {
+	sc, ok := t.keys[t.current]
 	if !ok {
-		d.current = nil
-		return ErrBadEdgeType
+		return nil
 	}
-
-	node = cursoc.To
-
-	// log.Printf("Checking next visited: %+s %+s", node.Value(), d.visited[node])
-	if d.visited[node] {
-		return d.Next()
-	}
-
-	d.addCache(node)
-
-	return d.Next()
+	return sc
 }
 
-//hasNext returns true/false if it has more elements
-func (d *BFSIterator) hasNext() bool {
-	if len(d.cache) <= 0 && d.started > 0 {
-		return false
+//Next calls the internal next
+func (t *Transversor) Next() error {
+	if t.from == nil {
+		return ErrBadNode
 	}
 
-	if len(d.cache) <= 0 {
-		first, err := d.graph.nodeSet().FirstNode()
+	if t.next != nil {
+		return t.next()
+	}
 
-		if err != nil {
-			return false
+	return ErrBadIterator
+}
+
+//Node returns the current  node
+func (t *Transversor) Node() Nodes {
+	return t.current
+}
+
+//Reset resets the tranveror
+func (t *Transversor) Reset() {
+	t.from = nil
+	t.started = 0
+	t.walkdepth = 0
+	t.current = nil
+	t.keys = make(map[Nodes]*Socket)
+	t.visited.Reset()
+	if t.reset != nil {
+		t.reset()
+	}
+}
+
+//DepthFirstPreOrder returns a depth first search provider
+func DepthFirstPreOrder(directive *TransversalDirective) (t *Transversor) {
+	t = MakeTransversor(directive)
+
+	var cache = NewCache()
+	unlocked := true
+
+	t.reset = func() {
+		cache.Reset()
+	}
+
+	t.next = func() error {
+		if cache.Length() <= 0 && t.started > 0 {
+			t.current = nil
+			return sequence.ErrBADINDEX
 		}
 
-		atomic.StoreInt64(&d.started, 1)
-		d.addCache(first)
+		if t.started <= 0 {
+			atomic.StoreInt64(&t.started, 1)
+			unlocked = false
+			cache.AddCache(t.from)
+		}
+
+		cur, err := cache.LastCache()
+
+		if err != nil {
+			t.current = nil
+			return err
+		}
+
+		node, itr := cur.Node, cur.Itr
+
+		if t.directive.Revisits(node, t.visited.Valid(node)) {
+			t.visited.Add(node)
+			t.current = node
+			return nil
+		}
+
+		err = itr.Next()
+
+		if err != nil {
+			atomic.AddInt64(&t.walkdepth, -1)
+			cache.Uncache()
+			return t.Next()
+		}
+
+		cursoc, ok := itr.Value().(*Socket)
+
+		if !ok {
+			t.current = nil
+			return ErrBadEdgeType
+		}
+
+		node = cursoc.To
+
+		if !t.directive.Revisits(node, t.visited.Valid(node)) {
+			return t.Next()
+		}
+
+		t.keys[node] = cursoc
+		cache.AddCache(node)
+
+		atomic.AddInt64(&t.walkdepth, 1)
+
+		return t.Next()
 	}
 
-	return true
+	return
 }
 
-//Next moves to the next element
-func (d *BFSIterator) Next() error {
-	if !d.hasNext() {
-		return sequence.ErrBADINDEX
+//DepthFirstPostOrder returns a depth first search provider
+func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
+	t = MakeTransversor(directive)
+
+	var cache = NewCache()
+	var curnode *NodeCache
+	var err error
+
+	t.reset = func() {
+		cache.Reset()
 	}
 
-	cur, err := d.lastCache()
+	t.next = func() error {
+		if cache.Length() <= 0 && t.started > 0 {
+			return ErrBadIndex
+		}
 
-	if err != nil {
-		d.current = nil
-		return err
+		if t.started <= 0 {
+			atomic.StoreInt64(&t.started, 1)
+			cache.AddCache(t.from)
+			t.visited.Add(t.from)
+		}
+
+		// t.key = nil
+		curnode, err = cache.LastCache()
+
+		if err != nil {
+			t.current = nil
+			return ErrBadIndex
+		}
+
+		cur := curnode.Itr
+		node := curnode.Node
+
+		if err := cur.Next(); err != nil {
+			// cache.UncacheRight()
+			if t.directive.Revisits(node, t.visited.Valid(node)) {
+				cache.AddCache(node)
+				if t.walkdepth > 0 {
+					atomic.AddInt64(&t.walkdepth, -1)
+				}
+				t.visited.Add(node)
+				return t.Next()
+			}
+
+			if t.walkdepth > 0 {
+				atomic.AddInt64(&t.walkdepth, -1)
+			}
+
+			cache.Uncache()
+			// t.visited.Add(node)
+			t.current = node
+			return nil
+		}
+
+		curnode, ok := cur.Value().(*Socket)
+
+		if !ok {
+			t.current = nil
+			return ErrBadEdgeType
+		}
+
+		// if _, ok := socks[curnode.To]; !ok {
+		// 	socks[curnode.To] = curnode
+		// 	log.Printf("Sockets: %+s", socks)
+		// }
+
+		co := curnode.To
+
+		atomic.AddInt64(&t.walkdepth, 1)
+		if !t.directive.Revisits(co, t.visited.Valid(co)) {
+			return t.Next()
+		}
+
+		t.keys[co] = curnode
+
+		cache.AddCache(co)
+		t.visited.Add(co)
+		// t.current = co
+		return t.Next()
 	}
 
-	node, itr := cur.Node, cur.Itr
+	return
+}
 
-	if !d.visited[node] {
-		d.visited[node] = true
-		d.current = node
+//BreadthFirstPreOrder returns a depth first search provider
+func BreadthFirstPreOrder(directive *TransversalDirective) (t *Transversor) {
+	t = MakeTransversor(directive)
+
+	unlocked := true
+	var cache = NewCache()
+
+	t.reset = func() {
+		cache.Reset()
+	}
+
+	t.next = func() error {
+		if cache.Length() <= 0 && t.started > 0 {
+			return sequence.ErrBADINDEX
+		}
+
+		if cache.Length() <= 0 {
+			atomic.StoreInt64(&t.started, 1)
+			cache.AddCache(t.from)
+			t.visited.Add(t.from)
+			t.current = t.from
+			return nil
+		}
+
+		cur, err := cache.FirstCache()
+
+		if err != nil {
+			t.current = nil
+			return err
+		}
+
+		node, itr := cur.Node, cur.Itr
+
+		if t.directive.Revisits(node, t.visited.Valid(node)) {
+			cache.AddCache(node)
+			return t.Next()
+		}
+
+		if err := itr.Next(); err != nil {
+			unlocked = true
+			cache.UncacheRight()
+			return t.Next()
+		}
+
+		if unlocked {
+			atomic.AddInt64(&t.walkdepth, 1)
+			unlocked = false
+		}
+
+		soc, ok := itr.Value().(*Socket)
+
+		if !ok {
+			t.current = nil
+			return ErrBadEdgeType
+		}
+
+		no := soc.To
+
+		if !t.directive.Revisits(no, t.visited.Valid(no)) {
+			return t.Next()
+		}
+
+		t.keys[no] = soc
+
+		t.visited.Add(no)
+		cache.AddCache(no)
+		t.current = no
 		return nil
 	}
 
-	d.unCache()
+	return
+}
 
-	for itr.Next() == nil {
-		sock, ok := itr.Value().(*Socket)
-		if !ok {
-			continue
+//BreadthFirstPostOrder returns a depth first search provider
+func BreadthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
+	t = MakeTransversor(directive)
+
+	var cache = NewCache()
+	var curnode *NodeCache
+	var err error
+	depths := make(map[Nodes]int64)
+
+	t.reset = func() {
+		cache.Reset()
+	}
+
+	t.next = func() error {
+		if cache.Length() <= 0 && t.started > 0 {
+			depths = nil
+			return ErrBadIndex
 		}
-		d.addCache(sock.To)
+
+		if t.started <= 0 {
+			atomic.StoreInt64(&t.started, 1)
+			depths[t.from] = int64(0)
+			cache.AddCache(t.from)
+		}
+
+		curnode, err = cache.FirstCache()
+
+		if err != nil {
+			t.current = nil
+			return ErrBadIndex
+		}
+
+		cur := curnode.Itr
+		node := curnode.Node
+
+		if err := cur.Next(); err != nil {
+			cache.UncacheRight()
+
+			if !t.directive.Revisits(node, t.visited.Valid(node)) {
+				return t.Next()
+			}
+
+			atomic.StoreInt64(&t.walkdepth, depths[node])
+			t.visited.Add(node)
+			t.current = node
+			return nil
+		}
+
+		curnode, ok := cur.Value().(*Socket)
+
+		if !ok {
+			t.current = nil
+			return ErrBadEdgeType
+		}
+
+		co := curnode.To
+
+		if !t.directive.Revisits(co, t.visited.Valid(co)) {
+			return t.Next()
+		}
+
+		t.keys[co] = curnode
+
+		if _, ok := depths[co]; !ok {
+			dp := depths[node]
+			depths[co] = dp + 1
+			atomic.StoreInt64(&t.walkdepth, depths[co])
+		}
+
+		atomic.StoreInt64(&t.walkdepth, depths[co])
+		cache.AddCache(co)
+		t.visited.Add(co)
+		t.current = co
+		return nil
 	}
 
-	return d.Next()
-}
-
-//DSF returns a GraphProc for depth-first
-func DSF(fx GraphHandlers, g Graphs, depth int) *GraphProc {
-	return &GraphProc{
-		GraphIterable: DFSDax(NewDFSIterator(g, depth)),
-		fx:            fx,
-	}
-}
-
-//BSF returns a GraphProc for depth-first
-func BSF(fx GraphHandlers, g Graphs, depth int) *GraphProc {
-	return &GraphProc{
-		GraphIterable: BFSDax(NewBFSIterator(g, depth)),
-		fx:            fx,
-	}
+	return
 }

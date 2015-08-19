@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"fmt"
 	"sync/atomic"
 
 	"github.com/influx6/sequence"
@@ -21,6 +22,11 @@ func (d *DeferNode) ChangeValue(v interface{}) {
 //ResetNext provides a convenient method to nill the next link
 func (d *DeferNode) ResetNext() {
 	d.next = nil
+}
+
+//String returns the string representation of the data
+func (d *DeferNode) String() string {
+	return fmt.Sprintf("%+v", d.data)
 }
 
 //ResetPrevious provides a convenient method to nill the previous link
@@ -182,6 +188,54 @@ func (d *DeferList) AppendElement(data interface{}) *DeferNode {
 	nc := NewDeferNode(data, d)
 	d.Add(nc)
 	return nc
+}
+
+//PopTail removes the last element and resets the tail to the previous element or returns a error
+func (d *DeferList) PopTail() *DeferNode {
+	if d.Tail() == nil {
+		return nil
+	}
+
+	nx := d.Tail()
+	prnx := nx.Previous()
+
+	if prnx == nil {
+		d.shiftTail(nil)
+	}
+
+	if nx == d.Root() {
+		d.shiftRoot(nil)
+	} else {
+		d.shiftTail(prnx)
+	}
+
+	nx.Detach()
+
+	return nx
+}
+
+//PopRoot removes the first element and resets the tail to the previous element or returns a error
+func (d *DeferList) PopRoot() *DeferNode {
+	if d.Root() == nil {
+		return nil
+	}
+
+	nx := d.Root()
+	rx := d.Root().Next()
+
+	if rx == nil {
+		d.shiftRoot(nil)
+	}
+
+	if nx == d.Tail() {
+		d.shiftTail(nil)
+	} else {
+		d.shiftRoot(rx)
+	}
+
+	nx.Detach()
+
+	return nx
 }
 
 //PrependElement adds up a new data to the list
