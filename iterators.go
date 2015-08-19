@@ -102,10 +102,21 @@ func DepthFirstPreOrder(directive *TransversalDirective) (t *Transversor) {
 		}
 
 		if t.directive.Revisits(node, t.visited.Valid(node)) {
+
+			// if t.directive.Heuristic(node, t.keys[node]) != nil {
+			// 	cache.Uncache()
+			// 	return t.Next()
+			// }
+
 			t.visited.Add(node)
 			t.current = node
 			return nil
 		}
+
+		// if t.directive.Heuristic(node, t.keys[node]) != nil {
+		// 	cache.Uncache()
+		// 	return t.Next()
+		// }
 
 		err = itr.Next()
 
@@ -162,7 +173,6 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 			t.visited.Add(t.from)
 		}
 
-		// t.key = nil
 		curnode, err = cache.LastCache()
 
 		if err != nil {
@@ -174,7 +184,6 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 		node := curnode.Node
 
 		if err := cur.Next(); err != nil {
-			// cache.UncacheRight()
 			if t.directive.Revisits(node, t.visited.Valid(node)) {
 				cache.AddCache(node)
 				if t.walkdepth > 0 {
@@ -189,7 +198,6 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 			}
 
 			cache.Uncache()
-			// t.visited.Add(node)
 			t.current = node
 			return nil
 		}
@@ -201,11 +209,6 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 			return ErrBadEdgeType
 		}
 
-		// if _, ok := socks[curnode.To]; !ok {
-		// 	socks[curnode.To] = curnode
-		// 	log.Printf("Sockets: %+s", socks)
-		// }
-
 		co := curnode.To
 
 		atomic.AddInt64(&t.walkdepth, 1)
@@ -216,13 +219,11 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 		t.keys[co] = curnode
 
 		if t.directive.Heuristic(co, t.keys[co]) != nil {
-			// cache.Uncache()
 			return t.Next()
 		}
 
 		cache.AddCache(co)
 		t.visited.Add(co)
-		// t.current = co
 		return t.Next()
 	}
 
@@ -556,29 +557,34 @@ func Filter(dir *TransversalDirective) (*FilterBuilder, error) {
 }
 
 //Evaluator provides a means of adding a evaluation
-func (f *FilterBuilder) Evaluator(eval NodeEval) {
+func (f *FilterBuilder) Evaluator(eval NodeEval) *FilterBuilder {
 	if f.filter == nil {
-		return
+		return f
 	}
 
-	cof := f.stack
+	stack := f.stack
 
 	f.stack = func(n Nodes, s *Socket, d int) error {
-		if err := cof(n, s, d); err != nil {
-			return err
+		if stack != nil {
+			if err := stack(n, s, d); err != nil {
+				return err
+			}
 		}
 		if ok := eval(n, s, d); !ok {
 			return ErrBadNode
 		}
 		return nil
 	}
+
+	return f
 }
 
-//Done returns the filter with set criteria
-func (f *FilterBuilder) Done() *GraphFilter {
+//Transverse returns the filter with set criteria
+func (f *FilterBuilder) Transverse(n Nodes) *GraphFilter {
 	fi := f.filter
 	fi.conditions = f.stack
 	f.filter = nil
+	fi.Transverse(n)
 	return fi
 }
 

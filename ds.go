@@ -220,6 +220,7 @@ type (
 		directive     *TransversalDirective
 		from, current Nodes
 		keys          map[Nodes]*Socket
+		depths        map[Nodes]int64
 		started       int64
 		walkdepth     int64
 		visited       NodeMaps

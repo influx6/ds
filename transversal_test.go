@@ -39,6 +39,7 @@ func TestDFSPreHeuristic(t *testing.T) {
 
 	dfs.Reset()
 }
+
 func TestDFSPre(t *testing.T) {
 	var gs = NewGraph()
 	gs.Add(1, 3, 4, 5, 6, 7, 8)
@@ -287,4 +288,37 @@ func TestBFSPostHeuristic(t *testing.T) {
 	}
 
 	bfs.Reset()
+}
+
+func TestFilter(t *testing.T) {
+	var gs = NewGraph()
+	gs.Add(1, 3, 4, 5, 6, 7)
+	gs.Bind(1, 3, 0)
+	gs.Bind(3, 4, 0)
+	gs.Bind(4, 6, 0)
+	gs.Bind(4, 5, 0)
+	gs.Bind(5, 4, 0)
+	gs.Bind(1, 7, 0)
+	gs.Bind(1, 6, 0)
+	gs.Bind(6, 3, 0)
+
+	builder, err := Filter(DFPreOrderDirective(nil, nil))
+
+	if err != nil {
+		t.Fatalf("Unable to create filter: %+s", err)
+	}
+
+	filter := builder.Evaluator(func(n Nodes, soc *Socket, depth int) bool {
+
+		if depth == 3 {
+			return false
+		}
+
+		return true
+	}).Transverse(gs.Get(1))
+
+	for filter.Next() == nil {
+	}
+
+	t.Logf("Path: %+s", filter.Nodes())
 }
