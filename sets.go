@@ -48,6 +48,11 @@ func NewDeferNodeSet() *DeferNodeSet {
 	}
 }
 
+//Has returns true/false if the value exists
+func (n *StringSet) Has(attr string) bool {
+	return n.set.Contains(attr)
+}
+
 //GetIndex returns the node at this index
 func (n *StringSet) GetIndex(ind int) (string, error) {
 	if ind < 0 {
