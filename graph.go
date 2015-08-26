@@ -35,6 +35,11 @@ func (n *Node) ChangeValue(d interface{}) {
 
 //ChangeGraph changes the graph this nodes is attached to
 func (n *Node) ChangeGraph(g Graphs) {
+	if n.graph == g {
+		return
+	}
+
+	n.graph = g
 	itr := n.arcs.Iterator()
 
 	for itr.Next() == nil {
@@ -45,7 +50,6 @@ func (n *Node) ChangeGraph(g Graphs) {
 	}
 
 	n.arcs.Clear()
-	n.graph = g
 }
 
 //Graph returns the graph we are connected with
@@ -237,9 +241,7 @@ func (n *Graph) String() string {
 		fmt.Sprintf("<Graph UID='%s'>\n", n.uid),
 		"-> Nodes Length",
 		fmt.Sprintf("%d", n.Length()),
-		"\n",
-		"-> Content (DeptFirst Mode):",
-		"\n</Graph>",
+		"</Graph>",
 	}, " ")
 }
 

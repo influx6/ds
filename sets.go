@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -109,6 +110,17 @@ func (n *StringSet) EachString(fx func(string)) {
 	n.Each(func(nx string, _ int, _ func()) {
 		fx(nx)
 	})
+}
+
+//String returns a string representation of the inner slice
+func (n *StringSet) String() string {
+	data := []string{}
+	data = append(data, "[")
+	n.EachString(func(w string) {
+		data = append(data, w+",")
+	})
+	data = append(data, "]")
+	return strings.Join(data, "")
 }
 
 //Each calls the internal set Each method
@@ -391,7 +403,7 @@ func (b *baseset) Push(e ...Equalers) {
 
 //Each iterates all set data using a callback
 func (b *baseset) Each(fx func(Equalers, int, func())) {
-	if fx == nil {
+	if fx == nil || 0 >= b.Length() {
 		return
 	}
 

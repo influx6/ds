@@ -250,10 +250,9 @@ func (d *DeferList) increment() {
 }
 
 func (d *DeferList) decrement() {
-	if d.size == 0 {
-		return
+	if d.size > 0 {
+		atomic.AddInt64(&d.size, -1)
 	}
-	atomic.AddInt64(&d.size, -1)
 }
 
 //Add adds up a new node to the list
@@ -262,7 +261,8 @@ func (d *DeferList) Add(r *DeferNode) {
 		return
 	}
 
-	defer d.increment()
+	d.increment()
+
 	if d.root == nil && d.tail == nil {
 		r.ChangeList(d)
 		d.shiftRoot(r)

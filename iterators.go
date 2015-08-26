@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/influx6/ds"
 	"github.com/influx6/sequence"
 )
 
@@ -85,6 +86,12 @@ func DepthFirstPreOrder(directive *TransversalDirective) (t *Transversor) {
 			atomic.StoreInt64(&t.started, 1)
 			unlocked = false
 			cache.AddCache(t.from)
+		}
+
+		if t.directive.Depth != -1 {
+			if t.directive.Depth <= t.WalkDepth() {
+				return ErrBadIndex
+			}
 		}
 
 		cur, err := cache.LastCache()
@@ -173,6 +180,12 @@ func DepthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 			t.visited.Add(t.from)
 		}
 
+		if t.directive.Depth != -1 {
+			if t.directive.Depth <= t.WalkDepth() {
+				return ErrBadIndex
+			}
+		}
+
 		curnode, err = cache.LastCache()
 
 		if err != nil {
@@ -254,6 +267,11 @@ func BreadthFirstPreOrder(directive *TransversalDirective) (t *Transversor) {
 			return nil
 		}
 
+		if t.directive.Depth != -1 {
+			if t.directive.Depth <= t.WalkDepth() {
+				return ErrBadIndex
+			}
+		}
 		cur, err := cache.FirstCache()
 
 		if err != nil {
@@ -333,6 +351,11 @@ func BreadthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 			cache.AddCache(t.from)
 		}
 
+		if t.directive.Depth != -1 {
+			if t.directive.Depth <= t.WalkDepth() {
+				return ErrBadIndex
+			}
+		}
 		curnode, err = cache.FirstCache()
 
 		if err != nil {
@@ -459,8 +482,8 @@ func (t *Transversor) Reset() {
 	}
 }
 
-//Search returns a GraphProc for depth-first
-func Search(fx NodeDop, dir *TransversalDirective) (*GraphProc, error) {
+//CreateGraphTransversor returns the correct transversal from the TransversalDirective else returns an error as second value
+func CreateGraphTransversor(dir *TransversalDirective) (*Transversor, error) {
 
 	var verso *Transversor
 
@@ -475,6 +498,38 @@ func Search(fx NodeDop, dir *TransversalDirective) (*GraphProc, error) {
 		verso = BreadthFirstPreOrder(dir)
 	default:
 		return nil, fmt.Errorf("Unknown Transversal Order %s", dir.Order)
+	}
+
+	return verso, nil
+}
+
+//DepthFirstPreOrderIterator returns a depth-first transverso
+func DepthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(ds.DFPreOrderDirective(v, hx))
+}
+
+//DepthFirstPostOrderIterator returns a depth-first transverso
+func DepthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(ds.DFPostOrderDirective(v, hx))
+}
+
+//BreadthFirstPreOrderIterator returns a depth-first transverso
+func BreadthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(ds.BFPreOrderDirective(v, hx))
+}
+
+//BreadthFirstPostOrderIterator returns a depth-first transverso
+func BreadthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(ds.BFPostOrderDirective(v, hx))
+}
+
+//Search returns a GraphProc for depth-first
+func Search(fx NodeDop, dir *TransversalDirective) (*GraphProc, error) {
+
+	verso, err := CreateGraphTransversor(dir)
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &GraphProc{
