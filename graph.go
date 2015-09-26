@@ -9,14 +9,50 @@ import (
 	"github.com/influx6/flux"
 )
 
+//Values defines an interface with Values
+type Values interface {
+	Value() interface{}
+}
+
+//Nodes represents the standard Graph interface
+type Nodes interface {
+	Values
+	Equalers
+	//Represents the archs/edges of this nodes
+	Sockets() *DeferList
+	//Bind the supplied node to this node
+	Connect(Nodes, int) *Socket
+	//Unbind the supplied node from this one
+	GetEdge(Nodes) (*Socket, error)
+	HasEdge(Nodes) bool
+	RemovalEdges()
+	Disconnect(Nodes)
+	DisconnectOne(Nodes)
+	//ChangeGraph changes the underline graph this nodes belongs to
+	ChangeGraph(Graphs)
+	//Graph returns the graph of the node
+	Graph() Graphs
+	Arcs() DeferIterator
+	String() string
+}
+
+//Socket represents a connection between two nodes
+type Socket struct {
+	flux.Collector
+	Attrs  *StringSet
+	To     Nodes
+	From   Nodes
+	Weight int
+}
+
 //NewSocket creates a new socket between two nodes with a set weight
 func NewSocket(from, to Nodes, weight int) *Socket {
 	return &Socket{
-		StringMappable: flux.NewCollector(),
-		Attrs:          NewStringSet(),
-		To:             to,
-		From:           from,
-		Weight:         weight,
+		Collector: flux.NewCollector(),
+		Attrs:     NewStringSet(),
+		To:        to,
+		From:      from,
+		Weight:    weight,
 	}
 }
 
@@ -26,6 +62,13 @@ func (s *Socket) Close() {
 	s.From = nil
 	s.To = nil
 	s.Clear()
+}
+
+//Node represents an element in the graph
+type Node struct {
+	data  interface{}
+	arcs  *DeferList
+	graph Graphs
 }
 
 //ChangeValue changes the value of the node
@@ -177,10 +220,9 @@ func (n *Node) Connect(r Nodes, weight int) *Socket {
 //NewGraphNode returns a new graph node
 func NewGraphNode(d interface{}, g Graphs) *Node {
 	return &Node{
-		StringMappable: flux.NewCollector(),
-		data:           d,
-		arcs:           List(),
-		graph:          g,
+		data:  d,
+		arcs:  List(),
+		graph: g,
 	}
 }
 
@@ -198,6 +240,31 @@ func (n *Node) Arcs() DeferIterator {
 //Value returns the value of the node
 func (n *Node) Value() interface{} {
 	return n.data
+}
+
+//Graphs represents the standard Graph interface
+type Graphs interface {
+	// sequence.SizableSequencable
+	UID() string
+	Contains(interface{}) bool
+	Get(interface{}) Nodes
+	Add(...interface{})
+	AddNode(Nodes)
+	AddForeignNode(r Nodes)
+	Bind(interface{}, interface{}, int) (*Socket, bool)
+	UnBind(interface{}, interface{}) bool
+	BindNodes(Nodes, Nodes, int) (*Socket, bool)
+	UnBindNodes(Nodes, Nodes) bool
+	IsBound(interface{}, interface{}) bool
+	nodeSet() *NodeSet
+	Length() int
+	// UnBindAll(interface{}, interface{}) bool
+}
+
+//Graph represent a standard structure of nodes
+type Graph struct {
+	nodes *NodeSet
+	uid   string
 }
 
 //Length returns the size of the graph
@@ -230,6 +297,11 @@ func (n *Graph) AddForeignNode(r Nodes) {
 		n.nodes.AddNode(r)
 	}
 }
+
+//Length returns the total size of nodes in this graph
+// func (n *Graph) Length() int {
+// 	return n.nodes.Length()
+// }
 
 //UID returns the auto generated uuid for this graph
 func (n *Graph) UID() string {

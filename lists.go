@@ -7,6 +7,24 @@ import (
 	"github.com/influx6/sequence"
 )
 
+//NodePush defines a function for setting node links
+type NodePush func(*DeferNode) *DeferNode
+
+// DeferNode represents a standard node meeting DeferNode requirements
+type DeferNode struct {
+	data interface{}
+	list *DeferList
+	next NodePush
+	prev NodePush
+}
+
+// DeferList represents a sets of linkedlist meeting DeferList requirements
+type DeferList struct {
+	tail NodePush
+	root NodePush
+	size int64
+}
+
 //Reset provides a convenient method to nill the next,prev link and the list it belongs to
 func (d *DeferNode) Reset() {
 	d.Detach()
@@ -181,6 +199,21 @@ func (d *DeferNode) ChangePrevious(nx NodePush) {
 //NewDeferNode returns a new deffered node
 func NewDeferNode(data interface{}, l *DeferList) *DeferNode {
 	return &DeferNode{data: data, list: l}
+}
+
+//List returns a new *DeferList instance
+func List(data ...interface{}) (l *DeferList) {
+	l = &DeferList{}
+
+	for _, v := range data {
+		if n, ok := v.(*DeferNode); ok {
+			l.Add(n)
+		} else {
+			l.AppendElement(v)
+		}
+	}
+
+	return
 }
 
 //AppendElement adds up a new data to the list
@@ -500,6 +533,40 @@ func (d *DeferList) Clear() {
 	d.root = nil
 }
 
+//DeferIterator provides and defines methods for defer iteratore
+type DeferIterator interface {
+	sequence.Iterable
+	Reset2Tail()
+	Reset2Root()
+}
+
+//MovableDeferIterator defines iterators that can move both forward and backward
+type MovableDeferIterator interface {
+	DeferIterator
+	Previous() error
+}
+
+//NewListIterator returns a iterator for the *DeferList
+func NewListIterator(l *DeferList) *DeferListIterator {
+	return &DeferListIterator{list: l}
+}
+
+//NewListIteratorAt returns a iterator for the *DeferList
+func NewListIteratorAt(l *DeferList, d *DeferNode) (*DeferListIterator, error) {
+	if !l.Has(d) {
+		return nil, ErrBadNode
+	}
+
+	return &DeferListIterator{list: l, current: d}, nil
+}
+
+// DeferListIterator provides an iterator for DeferredList
+type DeferListIterator struct {
+	list    *DeferList
+	current *DeferNode
+	state   int64
+}
+
 //Length returns the length of the list
 func (lx *DeferListIterator) Length() int {
 	return lx.list.Length()
@@ -597,33 +664,4 @@ func (lx *DeferListIterator) Next() error {
 	}
 
 	return nil
-}
-
-//NewListIterator returns a iterator for the *DeferList
-func NewListIterator(l *DeferList) *DeferListIterator {
-	return &DeferListIterator{list: l}
-}
-
-//NewListIteratorAt returns a iterator for the *DeferList
-func NewListIteratorAt(l *DeferList, d *DeferNode) (*DeferListIterator, error) {
-	if !l.Has(d) {
-		return nil, ErrBadNode
-	}
-
-	return &DeferListIterator{list: l, current: d}, nil
-}
-
-//List returns a new *DeferList instance
-func List(data ...interface{}) (l *DeferList) {
-	l = &DeferList{}
-
-	for _, v := range data {
-		if n, ok := v.(*DeferNode); ok {
-			l.Add(n)
-		} else {
-			l.AppendElement(v)
-		}
-	}
-
-	return
 }

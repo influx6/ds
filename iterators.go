@@ -1,14 +1,18 @@
 package ds
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
-	"github.com/influx6/ds"
 	"github.com/influx6/sequence"
 )
 
 var (
+	// ErrNotFound is returned when no node is found matching criteria
+	ErrNotFound = errors.New("Node not Found")
+
 	defaultVisit = func(n Nodes, visited bool) bool {
 		if visited {
 			return false
@@ -27,6 +31,38 @@ var (
 		}
 	}
 )
+
+//TransversalOrder provides a order for TranversalDirective
+type TransversalOrder string
+
+const (
+	//DFPreOrder represents depth first order of starting with the node then go to the child nodes
+	DFPreOrder TransversalOrder = "depth-first-preorder"
+	//DFPostOrder represents depth first order of starting with the node children then go to the node
+	DFPostOrder TransversalOrder = "depth-first-postorder"
+	//BFPreOrder represents breadth first order of starting with the node then go to the child nodes
+	BFPreOrder TransversalOrder = "breadth-first-preorder"
+	//BFPostOrder represents breadth first order of starting with the node children then go to the node
+	BFPostOrder TransversalOrder = "breadth-first-postorder"
+)
+
+//VisitCaller provides a type for visit checks
+type VisitCaller func(Nodes, bool) bool
+
+//NodeOp provide a type for running on graph iterators
+type NodeOp func(Nodes, *Socket) error
+
+//NodeEval provides a evalutor format type
+type NodeEval func(Nodes, *Socket, int) bool
+
+//TransversalDirective provides a directive for transversing graphs
+type TransversalDirective struct {
+	Depth     int
+	Order     TransversalOrder
+	Revisits  VisitCaller
+	Heuristic NodeOp
+	AllNodes  bool
+}
 
 //MakeTransversalDirective creates a transversal directive
 func MakeTransversalDirective(depth int, order TransversalOrder, visit VisitCaller, heuristic NodeOp) *TransversalDirective {
@@ -58,6 +94,18 @@ func BFPostOrderDirective(v VisitCaller, nx NodeOp) *TransversalDirective {
 //DFPreOrderDirective provides a copy of a depth-first pre order rule
 func DFPreOrderDirective(v VisitCaller, hx NodeOp) *TransversalDirective {
 	return MakeTransversalDirective(-1, DFPreOrder, v, hx)
+}
+
+//NodeMaps represent the node map used by a iterator
+type NodeMaps map[Nodes]bool
+
+//NodeCaches represent the node cache used by a iterator
+type NodeCaches []*NodeCache
+
+//NodeCache provides a means of caching current node and current node iterator
+type NodeCache struct {
+	Node Nodes
+	Itr  DeferIterator
 }
 
 //DFPostOrderDirective provides a copy of a depth-first pre order rule
@@ -416,6 +464,25 @@ func BreadthFirstPostOrder(directive *TransversalDirective) (t *Transversor) {
 	return
 }
 
+//Fx provides the default func type
+type Fx func()
+
+//Next provides a function type for the next function
+type Next func() error
+
+// Transversor provide functional transversal provider
+type Transversor struct {
+	directive     *TransversalDirective
+	from, current Nodes
+	keys          map[Nodes]*Socket
+	depths        map[Nodes]int64
+	started       int64
+	walkdepth     int64
+	visited       NodeMaps
+	next          Next
+	reset         Fx
+}
+
 //MakeTransversor returns a default Transversor
 func MakeTransversor(dir *TransversalDirective) *Transversor {
 	core := &Transversor{
@@ -425,6 +492,47 @@ func MakeTransversor(dir *TransversalDirective) *Transversor {
 	}
 
 	return core
+}
+
+//CreateGraphTransversor returns the correct transversal from the TransversalDirective else returns an error as second value
+func CreateGraphTransversor(dir *TransversalDirective) (*Transversor, error) {
+
+	var verso *Transversor
+
+	switch dir.Order {
+	case DFPostOrder:
+		verso = DepthFirstPostOrder(dir)
+	case DFPreOrder:
+		verso = DepthFirstPreOrder(dir)
+	case BFPostOrder:
+		verso = BreadthFirstPostOrder(dir)
+	case BFPreOrder:
+		verso = BreadthFirstPreOrder(dir)
+	default:
+		return nil, fmt.Errorf("Unknown Transversal Order %s", dir.Order)
+	}
+
+	return verso, nil
+}
+
+//DepthFirstPreOrderIterator returns a depth-first transverso
+func DepthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(DFPreOrderDirective(v, hx))
+}
+
+//DepthFirstPostOrderIterator returns a depth-first transverso
+func DepthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(DFPostOrderDirective(v, hx))
+}
+
+//BreadthFirstPreOrderIterator returns a depth-first transverso
+func BreadthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(BFPreOrderDirective(v, hx))
+}
+
+//BreadthFirstPostOrderIterator returns a depth-first transverso
+func BreadthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
+	return CreateGraphTransversor(BFPostOrderDirective(v, hx))
 }
 
 //Use sets the node to tranversal from
@@ -482,45 +590,11 @@ func (t *Transversor) Reset() {
 	}
 }
 
-//CreateGraphTransversor returns the correct transversal from the TransversalDirective else returns an error as second value
-func CreateGraphTransversor(dir *TransversalDirective) (*Transversor, error) {
-
-	var verso *Transversor
-
-	switch dir.Order {
-	case DFPostOrder:
-		verso = DepthFirstPostOrder(dir)
-	case DFPreOrder:
-		verso = DepthFirstPreOrder(dir)
-	case BFPostOrder:
-		verso = BreadthFirstPostOrder(dir)
-	case BFPreOrder:
-		verso = BreadthFirstPreOrder(dir)
-	default:
-		return nil, fmt.Errorf("Unknown Transversal Order %s", dir.Order)
-	}
-
-	return verso, nil
-}
-
-//DepthFirstPreOrderIterator returns a depth-first transverso
-func DepthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
-	return CreateGraphTransversor(ds.DFPreOrderDirective(v, hx))
-}
-
-//DepthFirstPostOrderIterator returns a depth-first transverso
-func DepthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
-	return CreateGraphTransversor(ds.DFPostOrderDirective(v, hx))
-}
-
-//BreadthFirstPreOrderIterator returns a depth-first transverso
-func BreadthFirstPreOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
-	return CreateGraphTransversor(ds.BFPreOrderDirective(v, hx))
-}
-
-//BreadthFirstPostOrderIterator returns a depth-first transverso
-func BreadthFirstPostOrderIterator(v VisitCaller, hx NodeOp) (*Transversor, error) {
-	return CreateGraphTransversor(ds.BFPostOrderDirective(v, hx))
+//GraphProc provides a means of running a function on all nodes of a graph
+type GraphProc struct {
+	trans *Transversor
+	fx    NodeDop
+	g     Graphs
 }
 
 //Search returns a GraphProc for depth-first
@@ -575,6 +649,22 @@ func (p *GraphProc) Next() error {
 		return err
 	}
 	return p.fx(p.trans.Node(), p.trans.Key(), p.trans.WalkDepth())
+}
+
+//NodeDop is (Node Depth Operation) provide a type for running on graph iterators
+type NodeDop func(Nodes, *Socket, int) error
+
+//FilterNode provides a data type for inbetween filters
+type FilterNode struct {
+	Node   Nodes
+	Socket *Socket
+	Depth  int
+}
+
+//FilterBuilder provides a means of building a filter criteria
+type FilterBuilder struct {
+	filter *GraphFilter
+	stack  NodeDop
 }
 
 //Filter returns a GraphFilter for transversing
@@ -643,6 +733,13 @@ func (f *FilterBuilder) Transverse(n Nodes) *GraphFilter {
 	return fi
 }
 
+//GraphFilter provides a higher level filtering system ontop of the graphsearching framework
+type GraphFilter struct {
+	conditions NodeDop
+	proc       *GraphProc
+	paths      []*FilterNode
+}
+
 //reset resets the tranversal nodes
 func (f *GraphFilter) reset() {
 	f.paths = nil
@@ -676,4 +773,72 @@ func (f *GraphFilter) Nodes() []Nodes {
 
 	paths = nil
 	return nodes
+}
+
+// GraphSearcher defines interface rules for searches
+type GraphSearcher interface {
+	FindOne() (Nodes, error)
+	FindAll() ([]Nodes, error)
+}
+
+// EvaluateNode provides a function type for the linear searching algorithm
+type EvaluateNode func(Nodes) bool
+
+// LinearGraphSearch provides a simple,top-down search system for a graph and returns the result when a match is found
+type LinearGraphSearch struct {
+	graph Graphs
+	ro    sync.Mutex
+}
+
+// NewLinearGraphSearch returns a new LinearGraphSearch
+func NewLinearGraphSearch(g Graphs) *LinearGraphSearch {
+	ls := LinearGraphSearch{
+		graph: g,
+	}
+	return &ls
+}
+
+// FindOne runs through and retuns the first matching result or an error
+func (nl *LinearGraphSearch) FindOne(ev EvaluateNode) (Nodes, error) {
+	nl.ro.Lock()
+	defer nl.ro.Unlock()
+
+	var res Nodes
+
+	ns := nl.graph.nodeSet()
+
+	ns.Each(func(n Nodes, _ int, stop func()) {
+		if ev(n) {
+			res = n
+			stop()
+		}
+	})
+
+	if res == nil {
+		return nil, ErrNotFound
+	}
+
+	return res, nil
+}
+
+// FindAll runs through and retuns all eatching results or an error
+func (nl *LinearGraphSearch) FindAll(ev EvaluateNode) ([]Nodes, error) {
+	nl.ro.Lock()
+	defer nl.ro.Unlock()
+
+	var res []Nodes
+
+	ns := nl.graph.nodeSet()
+
+	ns.Each(func(n Nodes, _ int, stop func()) {
+		if ev(n) {
+			res = append(res, n)
+		}
+	})
+
+	if res == nil {
+		return nil, ErrNotFound
+	}
+
+	return res, nil
 }

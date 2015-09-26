@@ -6,6 +6,26 @@ import (
 	"sync/atomic"
 )
 
+// Sets provides a basic interface for Sets
+type Sets interface {
+	Find(interface{}) (int, bool)
+	Remove(interface{}) Equalers
+	Contains(interface{}) bool
+	Sanitize()
+	Add(Equalers, int) (int, bool)
+	Push(...Equalers)
+	Each(func(Equalers, int, func()))
+	Get(int) Equalers
+}
+
+//Equalers define an interface with Equal func
+type Equalers interface {
+	Equals(interface{}) bool
+}
+
+//String provides a super-type alias for strings
+type String string
+
 //Equals return the equality of a string
 func (s String) Equals(n interface{}) bool {
 	rs, ok := n.(string)
@@ -28,23 +48,15 @@ func (s String) String() string {
 	return string(s)
 }
 
-//NewNodeSet returns the set for nodes
-func NewNodeSet() *NodeSet {
-	return &NodeSet{
-		set: SafeSet(),
-	}
+//StringSet provides a set impl for strings
+type StringSet struct {
+	set   *baseset
+	dirty int64
 }
 
 //NewStringSet returns the set of string values
 func NewStringSet() *StringSet {
 	return &StringSet{
-		set: SafeSet(),
-	}
-}
-
-//NewDeferNodeSet returns the set for nodes
-func NewDeferNodeSet() *DeferNodeSet {
-	return &DeferNodeSet{
 		set: SafeSet(),
 	}
 }
@@ -163,6 +175,19 @@ func (n *StringSet) Length() int {
 	return n.set.Length()
 }
 
+//NodeSet provides a set implementation for graph nodes
+type NodeSet struct {
+	set   *baseset
+	dirty int64
+}
+
+//NewNodeSet returns the set for nodes
+func NewNodeSet() *NodeSet {
+	return &NodeSet{
+		set: SafeSet(),
+	}
+}
+
 //Length returns the size of the set
 func (n *NodeSet) Length() int {
 	return n.set.Length()
@@ -254,6 +279,19 @@ func (n *NodeSet) GetNode(data interface{}) (Nodes, bool) {
 	return nil, ok
 }
 
+//NewDeferNodeSet returns the set for nodes
+func NewDeferNodeSet() *DeferNodeSet {
+	return &DeferNodeSet{
+		set: SafeSet(),
+	}
+}
+
+//DeferNodeSet defines a set implementation for differered nodes
+type DeferNodeSet struct {
+	set   *baseset
+	dirty int64
+}
+
 //AllNodes return the internal nodes
 func (n *DeferNodeSet) AllNodes() []*DeferNode {
 	nodes := []*DeferNode{}
@@ -340,30 +378,59 @@ func (n *DeferNodeSet) GetNode(data interface{}) (*DeferNode, bool) {
 	return nil, ok
 }
 
-//SafeSet returns a new BaseSet
-func SafeSet() *baseset {
-	return &baseset{UnSafeSet(), new(sync.RWMutex)}
-}
+//EqualSet defines a set of
+type set []Equalers
 
-//UnSafeSet returns a new BaseSet
+// UnSafeSet returns a new BaseSet
 func UnSafeSet() set {
 	return make(set, 0)
 }
 
-//Length returns the length of the set
-func (b *baseset) Length() int {
-	b.rw.RLock()
-	sz := len(b.set)
-	b.rw.RUnlock()
-	return sz
+//Contains returns true if the value exists in set
+func (b *set) Contains(g interface{}) bool {
+	_, s := b.Find(g)
+	return s
 }
 
-//Add adds an item into the set return a bool wether succesful or not
-func (b *baseset) Add(e Equalers, pos int) (int, bool) {
-	b.rw.Lock()
-	ind, state := b.set.Add(e, pos)
-	b.rw.Unlock()
-	return ind, state
+//Find returns (index,bool) to indicate the position and if indeed the value exists else returns the last index and a false value
+func (b *set) Find(g interface{}) (int, bool) {
+	for n, v := range *b {
+		if !v.Equals(g) {
+			continue
+		}
+		return n, true
+	}
+
+	return len(*b), false
+}
+
+//Remove deletes this value from the set
+func (b *set) Remove(g interface{}) Equalers {
+	nm, state := b.Find(g)
+
+	if state {
+		tmp := (*b)[nm]
+
+		*b = append((*b)[0:nm], (*b)[nm+1:]...)
+		return tmp
+	}
+
+	return nil
+}
+
+//Sanitize removes all duplicates
+func (b *set) Sanitize() {
+	sz := len(*b) - 1
+	for i := 0; i < sz; i++ {
+		for j := i + 1; j <= sz; j++ {
+			if (*b)[i].Equals((*b)[j]) {
+				(*b)[j] = (*b)[sz]
+				(*b) = (*b)[0:sz]
+				sz--
+				j--
+			}
+		}
+	}
 }
 
 //Add adds an item into the set return a bool wether succesful or not
@@ -392,6 +459,33 @@ func (b *set) Push(e ...Equalers) {
 	for _, v := range e {
 		_, _ = b.Add(v, -1)
 	}
+}
+
+//BaseSet provides an implementation for different set types
+type baseset struct {
+	set set
+	rw  *sync.RWMutex
+}
+
+// SafeSet returns a new BaseSet
+func SafeSet() *baseset {
+	return &baseset{UnSafeSet(), new(sync.RWMutex)}
+}
+
+//Length returns the length of the set
+func (b *baseset) Length() int {
+	b.rw.RLock()
+	sz := len(b.set)
+	b.rw.RUnlock()
+	return sz
+}
+
+//Add adds an item into the set return a bool wether succesful or not
+func (b *baseset) Add(e Equalers, pos int) (int, bool) {
+	b.rw.Lock()
+	ind, state := b.set.Add(e, pos)
+	b.rw.Unlock()
+	return ind, state
 }
 
 //Push adds items into the list
@@ -446,57 +540,10 @@ func (b *baseset) Contains(e interface{}) bool {
 	return cs
 }
 
-//Contains returns true if the value exists in set
-func (b *set) Contains(g interface{}) bool {
-	_, s := b.Find(g)
-	return s
-}
-
-//Find returns (index,bool) to indicate the position and if indeed the value exists else returns the last index and a false value
-func (b *set) Find(g interface{}) (int, bool) {
-	for n, v := range *b {
-		if !v.Equals(g) {
-			continue
-		}
-		return n, true
-	}
-
-	return len(*b), false
-}
-
 //Remove deletes this value from the set
 func (b *baseset) Remove(g interface{}) Equalers {
 	b.rw.Lock()
 	s := b.set.Remove(g)
 	b.rw.Unlock()
 	return s
-}
-
-//Remove deletes this value from the set
-func (b *set) Remove(g interface{}) Equalers {
-	nm, state := b.Find(g)
-
-	if state {
-		tmp := (*b)[nm]
-
-		*b = append((*b)[0:nm], (*b)[nm+1:]...)
-		return tmp
-	}
-
-	return nil
-}
-
-//Sanitize removes all duplicates
-func (b *set) Sanitize() {
-	sz := len(*b) - 1
-	for i := 0; i < sz; i++ {
-		for j := i + 1; j <= sz; j++ {
-			if (*b)[i].Equals((*b)[j]) {
-				(*b)[j] = (*b)[sz]
-				(*b) = (*b)[0:sz]
-				sz--
-				j--
-			}
-		}
-	}
 }
